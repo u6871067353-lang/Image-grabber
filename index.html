@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IP Tracker - Bild Upload</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: #f8f9ff;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e8ebff;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .upload-text {
+            color: #666;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+
+        .upload-hint {
+            color: #999;
+            font-size: 14px;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .preview-container {
+            margin: 20px 0;
+            text-align: center;
+            display: none;
+        }
+
+        .preview-image {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .webhook-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            margin-bottom: 20px;
+            transition: border-color 0.3s ease;
+        }
+
+        .webhook-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .generate-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+        }
+
+        .generate-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .generate-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .result-container {
+            display: none;
+            background: #f8f9ff;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .result-label {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .result-link {
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            padding: 12px;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 14px;
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .copy-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s ease;
+        }
+
+        .copy-btn:hover {
+            background: #5568d3;
+        }
+
+        .copy-btn.copied {
+            background: #4caf50;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .success {
+            background: #e8f5e8;
+            color: #2e7d32;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 IP Tracker</h1>
+        
+        <div class="error" id="error"></div>
+        <div class="success" id="success"></div>
+        
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">🔗</div>
+            <div class="upload-text">Bild-Link hier einfügen</div>
+            <div class="upload-hint">z.B. https://example.com/bild.jpg</div>
+        </div>
+        
+        <input type="url" id="imageLinkInput" class="webhook-input" placeholder="https://example.com/bild.jpg" style="margin-bottom: 20px;">
+        
+        <div class="preview-container" id="previewContainer">
+            <img id="previewImage" class="preview-image" alt="Vorschau">
+        </div>
+        
+        <input type="text" id="webhookInput" class="webhook-input" placeholder="Discord Webhook URL hier einfügen...">
+        
+        <button id="generateBtn" class="generate-btn" disabled>Link generieren</button>
+        
+        <div class="loading" id="loading">
+            ⏳ Bild wird verarbeitet...
+        </div>
+        
+        <div class="result-container" id="resultContainer">
+            <div class="result-label">🔗 Dein Tracking-Link:</div>
+            <div class="result-link" id="resultLink"></div>
+            <button class="copy-btn" id="copyBtn">📋 Kopieren</button>
+        </div>
+    </div>
+
+    <script>
+        let imageLink = null;
+        
+        const uploadArea = document.getElementById('uploadArea');
+        const imageLinkInput = document.getElementById('imageLinkInput');
+        const previewContainer = document.getElementById('previewContainer');
+        const previewImage = document.getElementById('previewImage');
+        const webhookInput = document.getElementById('webhookInput');
+        const generateBtn = document.getElementById('generateBtn');
+        const loading = document.getElementById('loading');
+        const resultContainer = document.getElementById('resultContainer');
+        const resultLink = document.getElementById('resultLink');
+        const copyBtn = document.getElementById('copyBtn');
+        const error = document.getElementById('error');
+        const success = document.getElementById('success');
+        
+        // Link Input Events
+        uploadArea.addEventListener('click', () => imageLinkInput.focus());
+        
+        imageLinkInput.addEventListener('input', (e) => {
+            const url = e.target.value.trim();
+            if (url && isValidImageUrl(url)) {
+                imageLink = url;
+                previewImage.src = url;
+                previewContainer.style.display = 'block';
+            } else {
+                imageLink = null;
+                previewContainer.style.display = 'none';
+            }
+            checkGenerateButton();
+        });
+        
+        function isValidImageUrl(url) {
+            try {
+                const urlObj = new URL(url);
+                return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
+            } catch {
+                return false;
+            }
+        }
+        
+        webhookInput.addEventListener('input', checkGenerateButton);
+        
+        function checkGenerateButton() {
+            const hasImage = imageLink !== null;
+            const hasWebhook = webhookInput.value.trim() !== '';
+            
+            generateBtn.disabled = !(hasImage && hasWebhook);
+        }
+        
+        generateBtn.addEventListener('click', generateTrackingLink);
+        
+        async function generateTrackingLink() {
+            if (!imageLink || !webhookInput.value.trim()) {
+                showError('Bitte gib einen Bild-Link und eine Webhook-URL ein.');
+                return;
+            }
+            
+            hideMessages();
+            loading.style.display = 'block';
+            generateBtn.disabled = true;
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        image_url: imageLink,
+                        webhook: webhookInput.value.trim()
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showSuccess('Link erfolgreich generiert!');
+                    resultLink.textContent = result.tracking_url;
+                    resultContainer.style.display = 'block';
+                } else {
+                    showError(result.error || 'Fehler beim Generieren des Links');
+                }
+            } catch (err) {
+                showError('Verbindung zum Server fehlgeschlagen. Bitte versuche es später erneut.');
+            } finally {
+                loading.style.display = 'none';
+                generateBtn.disabled = false;
+            }
+        }
+        
+        copyBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(resultLink.textContent).then(() => {
+                copyBtn.textContent = '✅ Kopiert!';
+                copyBtn.classList.add('copied');
+                
+                setTimeout(() => {
+                    copyBtn.textContent = '📋 Kopieren';
+                    copyBtn.classList.remove('copied');
+                }, 2000);
+            });
+        });
+        
+        function showError(message) {
+            error.textContent = message;
+            error.style.display = 'block';
+            success.style.display = 'none';
+        }
+        
+        function showSuccess(message) {
+            success.textContent = message;
+            success.style.display = 'block';
+            error.style.display = 'none';
+        }
+        
+        function hideMessages() {
+            error.style.display = 'none';
+            success.style.display = 'none';
+        }
+    </script>
+</body>
+</html>
