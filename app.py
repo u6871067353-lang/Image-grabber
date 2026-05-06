@@ -4,11 +4,12 @@ import json
 import secrets
 from datetime import datetime
 import urllib.request
+import base64
 
 app = Flask(__name__)
 
-# KEINE Ordner erstellen - Vercel ist read-only
-# Wir verwenden nur tracking_data für JSON-Dateien
+# Speichere Tracking-Daten als base64-encoded JSON in der URL selbst
+# Das ist die einzige Möglichkeit für serverless Vercel
 
 @app.route('/')
 def index():
@@ -30,7 +31,7 @@ def upload_image():
         # Generiere einzigartige Tracking-ID
         tracking_id = secrets.token_urlsafe(16)
         
-        # Speichere Tracking-Daten (nur JSON, keine Ordner)
+        # Erstelle Tracking-Daten
         tracking_data = {
             'id': tracking_id,
             'image_url': image_url,
@@ -39,15 +40,13 @@ def upload_image():
             'visits': []
         }
         
-        # Speichere Tracking-Daten in einer globalen Variable (für Vercel)
-        if not hasattr(app, 'tracking_data'):
-            app.tracking_data = {}
-        app.tracking_data[tracking_id] = tracking_data
+        # Kodiere Tracking-Daten als base64 für die URL
+        tracking_data_encoded = base64.b64encode(json.dumps(tracking_data).encode()).decode()
         
-        # Generiere Tracking-URL
+        # Generiere Tracking-URL mit eingebetteten Daten
         protocol = 'https://'
         host = request.host
-        tracking_url = f"{protocol}{host}/track?track={tracking_id}"
+        tracking_url = f"{protocol}{host}/track?data={tracking_data_encoded}"
         
         return jsonify({
             'success': True,
@@ -60,17 +59,15 @@ def upload_image():
 
 @app.route('/track')
 def track_image():
-    tracking_id = request.args.get('track')
+    # Hole die base64-kodierten Daten aus der URL
+    tracking_data_encoded = request.args.get('data')
     
-    if not tracking_id:
-        return "Tracking-Parameter fehlt", 400
+    if not tracking_data_encoded:
+        return "Tracking-Daten fehlen", 400
     
     try:
-        # Lade Tracking-Daten aus globaler Variable
-        if not hasattr(app, 'tracking_data') or tracking_id not in app.tracking_data:
-            return "Tracking-Link nicht gefunden", 404
-            
-        tracking_data = app.tracking_data[tracking_id]
+        # Dekodiere die Tracking-Daten
+        tracking_data = json.loads(base64.b64decode(tracking_data_encoded).decode())
         
         # Sammle Besucher-Informationen
         visitor_info = {
@@ -84,10 +81,10 @@ def track_image():
         # Füge Besuch hinzu
         tracking_data['visits'].append(visitor_info)
         
-        # Sende Discord-Benachrichtigung mit echtem Webhook
+        # Sende Discord-Benachrichtigung
         try:
             webhook_url = tracking_data['webhook_url']
-            send_discord_notification(webhook_url, visitor_info, tracking_id)
+            send_discord_notification(webhook_url, visitor_info, tracking_data['id'])
         except:
             pass  # Discord-Benachrichtigung ist optional
         
